@@ -1,0 +1,195 @@
+#Reproducible Research Peer Assignment 1
+##Introduction
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+A 17,568 observation dataset was obtained from [here] (http://example.com) and read into r:
+
+```{r}
+activity<-read.csv("u:/activity.csv")
+```
+
+The variables included in this dataset are:
+
+steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+
+date: The date on which the measurement was taken in YYYY-MM-DD format
+
+interval: Identifier for the 5-minute interval in which measurement was taken
+
+##Total steps per day
+The total number of steps per day was calculated by using the ddply function from the plyr package.
+
+```{r}
+#total steps per day
+library(plyr)
+
+spdsum<-ddply(activity,"date",summarize,spd=sum(steps,na.rm=TRUE))
+```
+
+A histogram of the frequency of total steps per day could then be generated using the hist function.
+```{r}
+#histogram of steps per day
+hist(spdsum$spd,main="Histogram of total steps per day",xlab="Steps per day")
+```
+
+The mean and median of total steps per day were calcuated from the summarized dataset using the mean and median functions.
+```{r}
+#mean and median of steps per day
+meanspd<-round(mean(spdsum$spd),1)
+medspd<-median(spdsum$spd)
+```
+
+The mean total step per day was `r meanspd` while the median total steps per day was `r medspd`.
+
+##Average daily activity pattern
+
+Using the base plot function, a time series plot was created of the 5 minute time interval against the average (mean) number of step taken, averaged across all days. Firstly, the ddply function was again used to summarize the data by 5 minute interval.
+```{r}
+#time series plot of 5-min interval and mean steps taken
+fmisum<-ddply(activity,"interval",summarize,meansteps=mean(steps,na.rm=TRUE))
+```
+
+Using the resulting summary dataset, the plot was then created
+```{r}
+
+plot(fmisum$interval,
+     fmisum$meansteps,
+     type="l",
+     main="Time series plot of mean steps across all days by five minute interval",
+     xlab="5 minute interval",
+     ylab="Mean steps taken across all days")
+```
+
+By subsetting the summary dataset, fmisum, to retain only those observations which were equal to the maximum number of steps for any 5 minute interval, the interval with the maximum number of steps could be found.
+```{r}
+#which 5 min interval has then max steps
+maxsteps<-fmisum[which(fmisum$meansteps==max(fmisum$meansteps)),"interval"]
+maxsteps
+```
+
+##Imputing missing values
+Several observations in the dataset contained missing values in the "steps" variable. The total number of missing values was calculated thus:
+```{r}
+#calculate total number of nas in dataset
+nacnt<-length(activity[which(is.na(activity$steps)),"steps"])
+nacnt
+```
+
+It was decided to impute missing values for the "steps" variable with the mean number of steps taken in the relevant 5 minute interval. This was achieved by merged the original raw data with the summary dataset contained the mean steps per 5 minute interval used earlier.
+```{r}
+#impute values for missing steps data - decide to use mean number of steps for that 5 min interval
+impdata<-merge(activity,fmisum,by="interval")
+```
+
+The ifelse function could then be used to replace the missing values with the imputed values.
+```{r}
+impdata$steps<-ifelse(is.na(impdata$steps),impdata$meansteps,impdata$steps)
+```
+
+Retaining only the same columns as the raw activity dataset produced a dataset identical to the original apart from the imputed values (select and arrange functions from the dplyr package were used).
+```{r}
+library(dplyr)
+impdata<-select(impdata,steps,date,interval)
+impdata<-arrange(impdata,date,interval)
+
+#compare the two datasets
+str(activity)
+str(impdata)
+```
+
+Using the dataset with the imputed values, the data was summarized (as before) by using the ddply function to find the total number of steps per day.
+```{r}
+#calculate total steps per day using imputed data
+impsum<-ddply(impdata,"date",summarize,spd=sum(steps,na.rm=TRUE))
+```
+
+To evaluate the impact of the imputed values on the character of the data, two histograms were created.
+1 - using data with imputed values
+2 - using original raw data without imputed values
+
+The data was plotted using the hist function and the par function was used to place the output side by side.
+```{r}
+#plot histograms of total steps per day side by side for imputed and raw data
+par(mfcol=c(1,2),mar=c(4, 4, 2, 1))
+
+#histogram of steps per day using imputed data
+dave<-hist(impsum$spd,
+     main="Histogram of total steps per day\nusing imputed data for missing values",
+     xlab="Steps per day",
+     ylim=c(0,50))
+
+#histogram of steps per day
+hist(spdsum$spd,
+     main="Histogram of total steps per day\nwithout imputed values",
+     xlab="Steps per day",
+     ylim=c(0,50))
+```
+
+The mean and median total steps per day using the data with imputed values were calculated:
+```{r}
+#mean and median of steps per day
+meanimp<-round(mean(impsum$spd),1)
+medimp<-median(impsum$spd)
+```
+and found to be mean=`r meanimp` and median=`r medimp`. Compared to the non-imputed data values of `r meanspd` and `r medspd` respectively, replacing missing values with imputed data has increased the average steps per day.
+
+To investigate the increase over time, I created a smooted plot of mean steps per day over time for both imputed and non-imputed data. Data from the non-imputed summary dataset were assigned a flag of "no" with the imputed data having a flag of "yes".
+```{r}
+impsum$imputed<-"Yes"
+spdsum$imputed<-"No"
+```
+This data was then rbind-ed together, before using as.Date to convert the factor level date variable to the date class.
+```{r}
+allsum<-rbind(spdsum,impsum)
+allsum$daten<-as.Date(allsum$date,format="%Y-%m-%d")
+```
+
+The ggplot2 package was then used to plot the data.
+```{r}
+library(ggplot2)
+
+ggplot(allsum,aes(x=daten,
+                  y=spd,
+                  group=imputed,
+                  colour=imputed)) +
+  geom_smooth(method="loess") +
+  xlab("Date") + 
+  ylab("Average steps per day") + 
+  ggtitle("Smoothed plot of difference in mean steps per day over time\nbetween data with and without imputed values")
+```
+  
+##Differences in activity patterns between weekdays and weekends
+
+To investigate if there was a difference in activity level between weekdays and weekends, a new factor variable "weekend" was created using the ifelse function and the as.factor function. Possible value of the new factor were "Weekend" and "Weekday".
+```{r}
+impdata$weekend<-as.factor(ifelse(weekdays(as.Date(activity$date,format="%Y-%m-%d")) 
+                                  %in% c("Saturday","Sunday"),
+                                 "Weekend",
+                                 "Weekday"))
+unique(impdata$weekend)
+```
+
+the data was then summarized by % minute interval and whether the day was a weekday or on the weekend. 
+```{r}
+#summarize the data by weekend/weekday
+imppanel<-ddply(impdata,c("interval","weekend"),summarize,meanstep=mean(steps))
+```
+
+A panel plot was then created using the lattice package and the xyplot function. This plot creates 1 column of 2 panels to compare the mean steps taken per 5 minute interval on weekdays and at the weekend.
+```{r}
+#use lattice package for panel plot
+library(lattice)
+
+with(imppanel, {
+  xyplot(meanstep~interval|weekend,
+         type="l",
+         main="Comparison of mean steps per 5 minute interval during weekdays and weekends",
+         xlab="5 minute interval",
+         ylab="Mean number of steps",
+         layout=c(1,2))
+})
+```
+
+
+
+
